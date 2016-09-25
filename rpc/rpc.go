@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
+//	"fmt"
 	"net/http"
 	"sync"
 	"github.com/sammy007/open-ethereum-pool/util"
@@ -26,10 +26,7 @@ type GetBlockReply struct {
 	Nonce        string   `json:"nonce"`
 	Miner        string   `json:"miner"`
 	Difficulty   string   `json:"difficulty"`
-	GasLimit     string   `json:"gasLimit"`
-	GasUsed      string   `json:"gasUsed"`
 	Uncles       []string `json:"uncles"`
-	// https://github.com/ethereum/EIPs/issues/95
 	SealFields []string `json:"sealFields"`
 }
 
@@ -76,35 +73,6 @@ func (r *RPCClient) GetPendingBlock() (*GetBlockReplyPart, error) {
 	}
 	return nil, nil
 }
-
-func (r *RPCClient) GetBlockByHeight(height int64) (*GetBlockReply, error) {
-	params := []interface{}{fmt.Sprintf("0x%x", height), true}
-	return r.getBlockBy("eth_getBlockByNumber", params)
-}
-
-func (r *RPCClient) GetBlockByHash(hash string) (*GetBlockReply, error) {
-	params := []interface{}{hash, true}
-	return r.getBlockBy("eth_getBlockByHash", params)
-}
-
-func (r *RPCClient) GetUncleByBlockNumberAndIndex(height int64, index int) (*GetBlockReply, error) {
-	params := []interface{}{fmt.Sprintf("0x%x", height), fmt.Sprintf("0x%x", index)}
-	return r.getBlockBy("eth_getUncleByBlockNumberAndIndex", params)
-}
-
-func (r *RPCClient) getBlockBy(method string, params []interface{}) (*GetBlockReply, error) {
-	rpcResp, err := r.doPost(r.Url, method, params)
-	if err != nil {
-		return nil, err
-	}
-	if rpcResp.Result != nil {
-		var reply *GetBlockReply
-		err = json.Unmarshal(*rpcResp.Result, &reply)
-		return reply, err
-	}
-	return nil, nil
-}
-
 
 func (r *RPCClient) SubmitBlock(params []string) (bool, error) {
 	rpcResp, err := r.doPost(r.Url, "eth_submitWork", params)

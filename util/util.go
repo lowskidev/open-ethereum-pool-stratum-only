@@ -1,11 +1,10 @@
 package util
 
 import (
-	"math/big"
-	"regexp"
-	"strconv"
-	"time"
-
+        "math/big"
+        "regexp"
+        "time"
+        "strconv"
 	"github.com/ethereum/go-ethereum/common"
 )
 

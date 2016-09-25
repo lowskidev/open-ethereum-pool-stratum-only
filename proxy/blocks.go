@@ -13,7 +13,7 @@ import (
 	"github.com/sammy007/open-ethereum-pool/util"
 )
 
-const maxBacklog = 3
+const maxBacklog = 20
 
 type heightDiffPair struct {
 	diff   *big.Int

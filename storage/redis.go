@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"gopkg.in/redis.v3"
 
 	"github.com/sammy007/open-ethereum-pool/util"
@@ -46,10 +45,10 @@ type BlockData struct {
 	immatureKey    string
 }
 
-func (b *BlockData) RewardInShannon() int64 {
-	reward := new(big.Int).Div(b.Reward, common.Shannon)
-	return reward.Int64()
-}
+//func (b *BlockData) RewardInShannon() int64 {
+//	reward := new(big.Int).Div(b.Reward, common.Shannon)
+//	return reward.Int64()
+//}
 
 func (b *BlockData) serializeHash() string {
 	if len(b.Hash) > 0 {
@@ -119,46 +118,46 @@ func (r *RedisClient) GetWhitelist() ([]string, error) {
 	return cmd.Val(), nil
 }
 
-func (r *RedisClient) WriteNodeState(id string, height uint64, diff *big.Int) error {
-	tx := r.client.Multi()
-	defer tx.Close()
+//func (r *RedisClient) WriteNodeState(id string, height uint64, diff *big.Int) error {
+//	tx := r.client.Multi()
+//	defer tx.Close()
+//
+//	now := util.MakeTimestamp() / 1000
+//
+//	_, err := tx.Exec(func() error {
+//		tx.HSet(r.formatKey("nodes"), join(id, "name"), id)
+//		tx.HSet(r.formatKey("nodes"), join(id, "height"), strconv.FormatUint(height, 10))
+//		tx.HSet(r.formatKey("nodes"), join(id, "difficulty"), diff.String())
+//		tx.HSet(r.formatKey("nodes"), join(id, "lastBeat"), strconv.FormatInt(now, 10))
+//		return nil
+//	})
+//	return err
+//}
 
-	now := util.MakeTimestamp() / 1000
-
-	_, err := tx.Exec(func() error {
-		tx.HSet(r.formatKey("nodes"), join(id, "name"), id)
-		tx.HSet(r.formatKey("nodes"), join(id, "height"), strconv.FormatUint(height, 10))
-		tx.HSet(r.formatKey("nodes"), join(id, "difficulty"), diff.String())
-		tx.HSet(r.formatKey("nodes"), join(id, "lastBeat"), strconv.FormatInt(now, 10))
-		return nil
-	})
-	return err
-}
-
-func (r *RedisClient) GetNodeStates() ([]map[string]interface{}, error) {
-	cmd := r.client.HGetAllMap(r.formatKey("nodes"))
-	if cmd.Err() != nil {
-		return nil, cmd.Err()
-	}
-	m := make(map[string]map[string]interface{})
-	for key, value := range cmd.Val() {
-		parts := strings.Split(key, ":")
-		if val, ok := m[parts[0]]; ok {
-			val[parts[1]] = value
-		} else {
-			node := make(map[string]interface{})
-			node[parts[1]] = value
-			m[parts[0]] = node
-		}
-	}
-	v := make([]map[string]interface{}, len(m), len(m))
-	i := 0
-	for _, value := range m {
-		v[i] = value
-		i++
-	}
-	return v, nil
-}
+//func (r *RedisClient) GetNodeStates() ([]map[string]interface{}, error) {
+//	cmd := r.client.HGetAllMap(r.formatKey("nodes"))
+//	if cmd.Err() != nil {
+//		return nil, cmd.Err()
+//	}
+//	m := make(map[string]map[string]interface{})
+//	for key, value := range cmd.Val() {
+//		parts := strings.Split(key, ":")
+//		if val, ok := m[parts[0]]; ok {
+//			val[parts[1]] = value
+//		} else {
+//			node := make(map[string]interface{})
+//			node[parts[1]] = value
+//			m[parts[0]] = node
+//		}
+//	}
+//	v := make([]map[string]interface{}, len(m), len(m))
+//	i := 0
+//	for _, value := range m {
+//		v[i] = value
+//		i++
+//	}
+//	return v, nil
+//}
 
 func (r *RedisClient) checkPoWExist(height uint64, params []string) (bool, error) {
 	// Sweep PoW backlog for previous blocks, we have 3 templates back in RAM
@@ -311,37 +310,6 @@ func (r *RedisClient) GetRoundShares(height int64, nonce string) (map[string]int
 	return result, nil
 }
 
-func (r *RedisClient) GetPayees() ([]string, error) {
-	payees := make(map[string]struct{})
-	var result []string
-	var c int64
-
-	for {
-		var keys []string
-		var err error
-		c, keys, err = r.client.Scan(c, r.formatKey("miners", "*"), 100).Result()
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range keys {
-			login := strings.Split(row, ":")[2]
-			payees[login] = struct{}{}
-		}
-		if c == 0 {
-			break
-		}
-	}
-	for login, _ := range payees {
-		result = append(result, login)
-	}
-	return result, nil
-}
-
-type PendingPayment struct {
-	Timestamp int64  `json:"timestamp"`
-	Amount    int64  `json:"amount"`
-	Address   string `json:"login"`
-}
 
 
 // Try to convert all numeric strings to int64
@@ -393,59 +361,6 @@ func (r *RedisClient) FlushStaleStats(window, largeWindow time.Duration) (int64,
 		}
 	}
 	return total, nil
-}
-
-func (r *RedisClient) CollectStats(smallWindow time.Duration, maxBlocks, maxPayments int64) (map[string]interface{}, error) {
-	window := int64(smallWindow / time.Second)
-	stats := make(map[string]interface{})
-
-	tx := r.client.Multi()
-	defer tx.Close()
-
-	now := util.MakeTimestamp() / 1000
-
-	cmds, err := tx.Exec(func() error {
-		tx.ZRemRangeByScore(r.formatKey("hashrate"), "-inf", fmt.Sprint("(", now-window))
-		tx.ZRangeWithScores(r.formatKey("hashrate"), 0, -1)
-		tx.HGetAllMap(r.formatKey("stats"))
-		tx.ZRevRangeWithScores(r.formatKey("blocks", "candidates"), 0, -1)
-		tx.ZRevRangeWithScores(r.formatKey("blocks", "immature"), 0, -1)
-		tx.ZRevRangeWithScores(r.formatKey("blocks", "matured"), 0, maxBlocks-1)
-		tx.ZCard(r.formatKey("blocks", "candidates"))
-		tx.ZCard(r.formatKey("blocks", "immature"))
-		tx.ZCard(r.formatKey("blocks", "matured"))
-		tx.ZCard(r.formatKey("payments", "all"))
-		tx.ZRevRangeWithScores(r.formatKey("payments", "all"), 0, maxPayments-1)
-		return nil
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	result, _ := cmds[2].(*redis.StringStringMapCmd).Result()
-	stats["stats"] = convertStringMap(result)
-	candidates := convertCandidateResults(cmds[3].(*redis.ZSliceCmd))
-	stats["candidates"] = candidates
-	stats["candidatesTotal"] = cmds[6].(*redis.IntCmd).Val()
-
-	immature := convertBlockResults(cmds[4].(*redis.ZSliceCmd))
-	stats["immature"] = immature
-	stats["immatureTotal"] = cmds[7].(*redis.IntCmd).Val()
-
-	matured := convertBlockResults(cmds[5].(*redis.ZSliceCmd))
-	stats["matured"] = matured
-	stats["maturedTotal"] = cmds[8].(*redis.IntCmd).Val()
-
-	payments := convertPaymentsResults(cmds[10].(*redis.ZSliceCmd))
-	stats["payments"] = payments
-	stats["paymentsTotal"] = cmds[9].(*redis.IntCmd).Val()
-
-	totalHashrate, miners := convertMinersStats(window, cmds[1].(*redis.ZSliceCmd))
-	stats["miners"] = miners
-	stats["minersTotal"] = len(miners)
-	stats["hashrate"] = totalHashrate
-	return stats, nil
 }
 
 func (r *RedisClient) CollectWorkersStats(sWindow, lWindow time.Duration, login string) (map[string]interface{}, error) {
@@ -512,59 +427,6 @@ func (r *RedisClient) CollectWorkersStats(sWindow, lWindow time.Duration, login 
 	return stats, nil
 }
 
-func (r *RedisClient) CollectLuckStats(windows []int) (map[string]interface{}, error) {
-	stats := make(map[string]interface{})
-
-	tx := r.client.Multi()
-	defer tx.Close()
-
-	max := int64(windows[len(windows)-1])
-
-	cmds, err := tx.Exec(func() error {
-		tx.ZRevRangeWithScores(r.formatKey("blocks", "immature"), 0, -1)
-		tx.ZRevRangeWithScores(r.formatKey("blocks", "matured"), 0, max-1)
-		return nil
-	})
-	if err != nil {
-		return stats, err
-	}
-	blocks := convertBlockResults(cmds[0].(*redis.ZSliceCmd), cmds[1].(*redis.ZSliceCmd))
-
-	calcLuck := func(max int) (int, float64, float64, float64) {
-		var total int
-		var sharesDiff, uncles, orphans float64
-		for i, block := range blocks {
-			if i > (max - 1) {
-				break
-			}
-			if block.Uncle {
-				uncles++
-			}
-			if block.Orphan {
-				orphans++
-			}
-			sharesDiff += float64(block.TotalShares) / float64(block.Difficulty)
-			total++
-		}
-		if total > 0 {
-			sharesDiff /= float64(total)
-			uncles /= float64(total)
-			orphans /= float64(total)
-		}
-		return total, sharesDiff, uncles, orphans
-	}
-	for _, max := range windows {
-		total, sharesDiff, uncleRate, orphanRate := calcLuck(max)
-		row := map[string]float64{
-			"luck": sharesDiff, "uncleRate": uncleRate, "orphanRate": orphanRate,
-		}
-		stats[strconv.Itoa(total)] = row
-		if total < max {
-			break
-		}
-	}
-	return stats, nil
-}
 
 func convertCandidateResults(raw *redis.ZSliceCmd) []*BlockData {
 	var result []*BlockData
@@ -687,21 +549,3 @@ func convertMinersStats(window int64, raw *redis.ZSliceCmd) (int64, map[string]M
 	return totalHashrate, miners
 }
 
-func convertPaymentsResults(raw *redis.ZSliceCmd) []map[string]interface{} {
-	var result []map[string]interface{}
-	for _, v := range raw.Val() {
-		tx := make(map[string]interface{})
-		tx["timestamp"] = int64(v.Score)
-		fields := strings.Split(v.Member.(string), ":")
-		tx["tx"] = fields[0]
-		// Individual or whole payments row
-		if len(fields) < 3 {
-			tx["amount"], _ = strconv.ParseInt(fields[1], 10, 64)
-		} else {
-			tx["address"] = fields[1]
-			tx["amount"], _ = strconv.ParseInt(fields[2], 10, 64)
-		}
-		result = append(result, tx)
-	}
-	return result
-}
