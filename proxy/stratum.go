@@ -66,6 +66,7 @@ func (s *ProxyServer) handleTCPClient(cs *Session) error {
 	cs.enc = json.NewEncoder(cs.conn)
 	connbuff := bufio.NewReaderSize(cs.conn, MaxReqSize)
 	s.setDeadline(cs.conn)
+	s.SetNoDelay(cs.conn)
 
 	for {
 		data, isPrefix, err := connbuff.ReadLine()
@@ -220,6 +221,11 @@ func (self *ProxyServer) setDeadline(conn *net.TCPConn) {
 	conn.SetDeadline(time.Now().Add(self.timeout))
 }
 
+func (self *ProxyServer) SetNoDelay(conn *net.TCPConn) {
+        conn.SetNoDelay(true)
+}
+
+
 func (s *ProxyServer) registerSession(cs *Session) {
 	s.sessionsMu.Lock()
 	defer s.sessionsMu.Unlock()
@@ -246,7 +252,7 @@ func (s *ProxyServer) broadcastNewJobs() {
 	log.Printf("Broadcasting new job to %v stratum miners", count)
 
 	start := time.Now()
-	bcast := make(chan int, 2048)
+	bcast := make(chan int, 1024)
 	n := 0
 
 	for m, _ := range s.sessions {
